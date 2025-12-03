@@ -242,33 +242,59 @@ canvas_ms = None
 
 # 创建主窗口
 root = tk.Tk()
-root.title("金价监控")
+root.title("监控")
 
 # 设置窗口最小尺寸（宽度，高度）
-root.minsize(width=800, height=600)
+root.minsize(width=400, height=200)
 # 设置窗口置顶
 # root.attributes('-topmost', True)
 
 # 创建顶部框架用于显示当前价格
 price_frame = tk.Frame(root)
-price_frame.pack(pady=10)
+price_frame.pack(pady=10, fill=tk.X)
 
 # 初始化时 - 创建标签以显示价格和涨跌幅（浙商）
 zs_price_label = tk.Label(price_frame, text="浙商 Price: ", font=(
 		"Arial", 12))
-zs_price_label.pack(side=tk.LEFT, padx=20)
+zs_price_label.pack(side=tk.LEFT, padx=10)
 
 # 初始化时 -创建标签以显示价格和涨跌幅（民生）
 ms_price_label = tk.Label(price_frame, text="民生 Price: ", font=(
 		"Arial", 12))
-ms_price_label.pack(side=tk.LEFT, padx=20)
+ms_price_label.pack(side=tk.LEFT, padx=10)
 
-# 创建图表框架
-chart_frame = tk.Frame(root)
-chart_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+# 创建滚动条框架
+scrollable_frame = tk.Frame(root)
+scrollable_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+# 添加垂直滚动条
+v_scrollbar = tk.Scrollbar(scrollable_frame, orient=tk.VERTICAL)
+v_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+# 添加水平滚动条
+h_scrollbar = tk.Scrollbar(scrollable_frame, orient=tk.HORIZONTAL)
+h_scrollbar.pack(side=tk.BOTTOM, fill=tk.X)
+
+# 创建画布用于放置图表内容
+canvas = tk.Canvas(scrollable_frame, yscrollcommand=v_scrollbar.set, xscrollcommand=h_scrollbar.set, highlightthickness=0)
+canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+# 配置滚动条与画布的关联
+v_scrollbar.config(command=canvas.yview)
+h_scrollbar.config(command=canvas.xview)
+
+# 创建图表框架，放置在画布上
+chart_frame = tk.Frame(canvas)
+canvas.create_window((0, 0), window=chart_frame, anchor=tk.NW)
+
+# 监听图表框架大小变化，更新滚动区域
+def update_scrollregion(event):
+    canvas.configure(scrollregion=canvas.bbox("all"))
+
+chart_frame.bind("<Configure>", update_scrollregion)
 
 # 创建图表标题
-zs_chart_title = tk.Label(chart_frame, text="浙商银行金价走势（最近一小时）", font=("Arial", 12))
+zs_chart_title = tk.Label(chart_frame, text="浙商走势（最近一小时）", font=("Arial", 12))
 zs_chart_title.pack(pady=5)
 
 # 创建浙商银行图表区域
@@ -276,7 +302,7 @@ zs_chart_area = tk.Frame(chart_frame)
 zs_chart_area.pack(fill=tk.BOTH, expand=True, pady=5)
 
 # 创建民生银行图表标题
-ms_chart_title = tk.Label(chart_frame, text="民生银行金价走势（最近一小时）", font=("Arial", 12))
+ms_chart_title = tk.Label(chart_frame, text="民生走势（最近一小时）", font=("Arial", 12))
 ms_chart_title.pack(pady=5)
 
 # 创建民生银行图表区域
@@ -387,7 +413,7 @@ def update_charts():
     
     # 创建浙商银行图表
     if len(zs_data_history["timestamp"]) > 1:
-        fig_zs = Figure(figsize=(6, 2), dpi=100)
+        fig_zs = Figure(figsize=(4, 2), dpi=100)
         ax_zs = fig_zs.add_subplot(111)
         ax_zs.plot(zs_data_history["timestamp"], zs_data_history["price"], color='orange', label='浙商金价')
         ax_zs.set_xlabel('时间')
@@ -396,7 +422,7 @@ def update_charts():
         ax_zs.grid(True)
         ax_zs.legend()
         # 调整图表边距，增加右侧边距，实现左对齐效果
-        fig_zs.subplots_adjust(left=0.1, right=0.85, top=0.9, bottom=0.4)
+        fig_zs.subplots_adjust(left=0.15, right=0.85, top=0.9, bottom=0.4)
         
         canvas_zs = FigureCanvasTkAgg(fig_zs, master=zs_chart_area)
         canvas_zs.draw()
@@ -408,7 +434,7 @@ def update_charts():
     
     # 创建民生银行图表
     if len(ms_data_history["timestamp"]) > 1:
-        fig_ms = Figure(figsize=(6, 2), dpi=100)
+        fig_ms = Figure(figsize=(4, 2), dpi=100)
         ax_ms = fig_ms.add_subplot(111)
         ax_ms.plot(ms_data_history["timestamp"], ms_data_history["price"], color='orange', label='民生金价')
         ax_ms.set_xlabel('时间')
@@ -417,7 +443,7 @@ def update_charts():
         ax_ms.grid(True)
         ax_ms.legend()
         # 调整图表边距，增加右侧边距，实现左对齐效果
-        fig_ms.subplots_adjust(left=0.1, right=0.85, top=0.9, bottom=0.4)
+        fig_ms.subplots_adjust(left=0.15, right=0.85, top=0.9, bottom=0.4)
         
         canvas_ms = FigureCanvasTkAgg(fig_ms, master=ms_chart_area)
         canvas_ms.draw()
