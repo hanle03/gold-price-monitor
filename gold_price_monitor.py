@@ -76,6 +76,67 @@ zs_data_history = {"timestamp": [], "price": []}
 ms_data_history = {"timestamp": [], "price": []}
 MAX_DATA_POINTS = 3600  # 一个小时的数据点（每秒一个）
 
+# 从日志文件读取数据的函数
+def read_data_from_log(file_path):
+    """
+    从日志文件中读取数据，确保返回的数据量不超过MAX_DATA_POINTS
+    参数:
+        file_path: 日志文件路径
+    返回:
+        dict: 包含timestamp和price的字典
+    """
+    data = {"timestamp": [], "price": []}
+    
+    # 检查文件是否存在
+    if not os.path.exists(file_path):
+        return data
+    
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+            
+        # 解析每一行数据
+        parsed_data = []
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            
+            # 解析CSV格式数据
+            parts = line.split('"')
+            if len(parts) < 5:
+                continue
+            
+            time_str = parts[1]
+            price_str = parts[3]
+            
+            try:
+                # 转换时间字符串为datetime对象
+                timestamp = datetime.datetime.strptime(time_str, '%Y-%m-%d %H:%M:%S')
+                # 转换价格字符串为float
+                price = float(price_str)
+                
+                parsed_data.append((timestamp, price))
+            except ValueError:
+                # 跳过格式不正确的行
+                continue
+        
+        # 按时间排序（确保最新的数据在最后）
+        parsed_data.sort(key=lambda x: x[0])
+        
+        # 确保数据量不超过MAX_DATA_POINTS，只保留最新的
+        if len(parsed_data) > MAX_DATA_POINTS:
+            parsed_data = parsed_data[-MAX_DATA_POINTS:]
+        
+        # 分离timestamp和price
+        for timestamp, price in parsed_data:
+            data["timestamp"].append(timestamp)
+            data["price"].append(price)
+    except Exception as e:
+        print(f"读取日志文件 {file_path} 出错: {e}")
+    
+    return data
+
 def fetch_data():
     try:
         # 检查日期是否变更，如果变更则更新日志路径
@@ -194,12 +255,12 @@ price_frame.pack(pady=10)
 
 # 初始化时 - 创建标签以显示价格和涨跌幅（浙商）
 zs_price_label = tk.Label(price_frame, text="浙商 Price: ", font=(
-		"Arial", 16))
+		"Arial", 12))
 zs_price_label.pack(side=tk.LEFT, padx=20)
 
 # 初始化时 -创建标签以显示价格和涨跌幅（民生）
 ms_price_label = tk.Label(price_frame, text="民生 Price: ", font=(
-		"Arial", 16))
+		"Arial", 12))
 ms_price_label.pack(side=tk.LEFT, padx=20)
 
 # 创建图表框架
@@ -207,7 +268,7 @@ chart_frame = tk.Frame(root)
 chart_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
 # 创建图表标题
-zs_chart_title = tk.Label(chart_frame, text="浙商银行金价走势（最近一小时）", font=("Arial", 14))
+zs_chart_title = tk.Label(chart_frame, text="浙商银行金价走势（最近一小时）", font=("Arial", 12))
 zs_chart_title.pack(pady=5)
 
 # 创建浙商银行图表区域
@@ -215,7 +276,7 @@ zs_chart_area = tk.Frame(chart_frame)
 zs_chart_area.pack(fill=tk.BOTH, expand=True, pady=5)
 
 # 创建民生银行图表标题
-ms_chart_title = tk.Label(chart_frame, text="民生银行金价走势（最近一小时）", font=("Arial", 14))
+ms_chart_title = tk.Label(chart_frame, text="民生银行金价走势（最近一小时）", font=("Arial", 12))
 ms_chart_title.pack(pady=5)
 
 # 创建民生银行图表区域
@@ -233,9 +294,100 @@ def update_charts():
     for widget in ms_chart_area.winfo_children():
         widget.destroy()
     
+    # 将matplotlib.dates导入移到函数外部
+    from matplotlib import dates as mdates
+    
+    # 鼠标悬停显示详细信息的函数
+    def hover(event, ax, data_history):
+        # 清除之前的注释
+        if hasattr(ax, 'hover_annotation'):
+            ax.hover_annotation.remove()
+            delattr(ax, 'hover_annotation')
+        
+        # 检查鼠标是否在轴上且event.xdata有效
+        if event.inaxes == ax and event.xdata is not None:
+            # 获取x坐标（时间）的索引
+            x_data = data_history["timestamp"]
+            y_data = data_history["price"]
+            
+            if len(x_data) == 0:
+                return
+            
+            # 将datetime对象转换为matplotlib内部的数值表示
+            x_data_num = mdates.date2num(x_data)
+            
+            # 找到最接近鼠标位置的点
+            idx = (np.abs(x_data_num - event.xdata)).argmin()
+            
+            # 获取该点的信息
+            timestamp = x_data[idx]
+            price = y_data[idx]
+            
+            # 创建显示文本
+            text = f"时间: {timestamp.strftime('%Y-%m-%d %H:%M:%S')}\n价格: {price:.2f}元"
+            
+            # 获取图表的x轴范围
+            xlim = ax.get_xlim()
+            # 计算图表中心位置
+            x_center = (xlim[0] + xlim[1]) / 2
+            
+            # 根据鼠标位置在图表左侧或右侧来调整标签位置
+            if event.xdata < x_center:
+                # 鼠标在左侧，标签在右边
+                ax.hover_annotation = ax.annotate(
+                    text, 
+                    xy=(event.xdata, event.ydata), 
+                    xytext=(10, 10),  # 标签位置相对于数据点的偏移（向右上）
+                    textcoords='offset points',
+                    verticalalignment='bottom',
+                    horizontalalignment='left',
+                    bbox=dict(boxstyle='round', facecolor='white', alpha=0.9),
+                    zorder=1000,  # 设置高zorder确保在最上层
+                    arrowprops=dict(arrowstyle='->', connectionstyle='arc3,rad=.5')
+                )
+            else:
+                # 鼠标在右侧，标签在左边
+                ax.hover_annotation = ax.annotate(
+                    text, 
+                    xy=(event.xdata, event.ydata), 
+                    xytext=(-10, 10),  # 标签位置相对于数据点的偏移（向左上）
+                    textcoords='offset points',
+                    verticalalignment='bottom',
+                    horizontalalignment='right',
+                    bbox=dict(boxstyle='round', facecolor='white', alpha=0.9),
+                    zorder=1000,  # 设置高zorder确保在最上层
+                    arrowprops=dict(arrowstyle='->', connectionstyle='arc3,rad=-.5')
+                )
+            
+            # 清除之前的十字轴线
+            if hasattr(ax, 'hover_hline'):
+                ax.hover_hline.remove()
+                delattr(ax, 'hover_hline')
+            if hasattr(ax, 'hover_vline'):
+                ax.hover_vline.remove()
+                delattr(ax, 'hover_vline')
+            
+            # 绘制十字轴线以突出当前坐标点
+            # 水平轴线（y=price）
+            ax.hover_hline = ax.axhline(y=price, color='gray', linestyle='--', linewidth=0.5, zorder=999)
+            # 垂直轴线（x=timestamp）
+            ax.hover_vline = ax.axvline(x=timestamp, color='gray', linestyle='--', linewidth=0.5, zorder=999)
+            
+            ax.figure.canvas.draw_idle()
+        else:
+            # 鼠标移出图表区域，移除十字线
+            if hasattr(ax, 'hover_hline'):
+                ax.hover_hline.remove()
+                delattr(ax, 'hover_hline')
+            if hasattr(ax, 'hover_vline'):
+                ax.hover_vline.remove()
+                delattr(ax, 'hover_vline')
+            
+            ax.figure.canvas.draw_idle()
+    
     # 创建浙商银行图表
     if len(zs_data_history["timestamp"]) > 1:
-        fig_zs = Figure(figsize=(8, 3), dpi=100)
+        fig_zs = Figure(figsize=(6, 2), dpi=100)
         ax_zs = fig_zs.add_subplot(111)
         ax_zs.plot(zs_data_history["timestamp"], zs_data_history["price"], color='orange', label='浙商金价')
         ax_zs.set_xlabel('时间')
@@ -243,15 +395,20 @@ def update_charts():
         ax_zs.tick_params(axis='x', rotation=45)
         ax_zs.grid(True)
         ax_zs.legend()
-        fig_zs.tight_layout()
+        # 调整图表边距，增加右侧边距，实现左对齐效果
+        fig_zs.subplots_adjust(left=0.1, right=0.85, top=0.9, bottom=0.4)
         
         canvas_zs = FigureCanvasTkAgg(fig_zs, master=zs_chart_area)
         canvas_zs.draw()
+        
+        # 添加鼠标悬停事件
+        canvas_zs.mpl_connect('motion_notify_event', lambda event: hover(event, ax_zs, zs_data_history))
+        
         canvas_zs.get_tk_widget().pack(fill=tk.BOTH, expand=True)
     
     # 创建民生银行图表
     if len(ms_data_history["timestamp"]) > 1:
-        fig_ms = Figure(figsize=(8, 3), dpi=100)
+        fig_ms = Figure(figsize=(6, 2), dpi=100)
         ax_ms = fig_ms.add_subplot(111)
         ax_ms.plot(ms_data_history["timestamp"], ms_data_history["price"], color='orange', label='民生金价')
         ax_ms.set_xlabel('时间')
@@ -259,11 +416,32 @@ def update_charts():
         ax_ms.tick_params(axis='x', rotation=45)
         ax_ms.grid(True)
         ax_ms.legend()
-        fig_ms.tight_layout()
+        # 调整图表边距，增加右侧边距，实现左对齐效果
+        fig_ms.subplots_adjust(left=0.1, right=0.85, top=0.9, bottom=0.4)
         
         canvas_ms = FigureCanvasTkAgg(fig_ms, master=ms_chart_area)
         canvas_ms.draw()
+        
+        # 添加鼠标悬停事件
+        canvas_ms.mpl_connect('motion_notify_event', lambda event: hover(event, ax_ms, ms_data_history))
+        
         canvas_ms.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+
+# 从日志文件初始化数据
+# 读取浙商银行日志数据
+zs_log_path = os.path.join(LOG_PATH, 'zs_gold_price.log')
+zs_data = read_data_from_log(zs_log_path)
+if zs_data["timestamp"]:
+    zs_data_history = zs_data
+
+# 读取民生银行日志数据
+ms_log_path = os.path.join(LOG_PATH, 'ms_gold_price.log')
+ms_data = read_data_from_log(ms_log_path)
+if ms_data["timestamp"]:
+    ms_data_history = ms_data
+
+# 更新图表以显示初始化数据
+update_charts()
 
 # 启动数据获取
 fetch_data()
