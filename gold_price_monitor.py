@@ -192,8 +192,84 @@ def fetch_data():
         ms_datetime = datetime.datetime.fromtimestamp(int(ms_time) / 1000).strftime('%Y-%m-%d %H:%M:%S')
 
         # 更新 GUI - 动态更新
-        zs_price_label.config(text=f"浙商 Price: {zs_price}\n时间: {zs_datetime}")
-        ms_price_label.config(text=f"民生 Price: {ms_price}\n时间: {ms_datetime}")
+        
+        # 获取用户输入的期待值
+        zs_expect_value = zs_expect_entry.get()  # 期待（卖）
+        zs_buy_expect_value = zs_buy_expect_entry.get()  # 期待（买）
+        ms_expect_value = ms_expect_entry.get()  # 期待（买）
+        ms_buy_expect_value = ms_buy_expect_entry.get()  # 期待（买）
+        
+        # 设置浙商银行价格显示样式
+        try:
+            zs_current = float(zs_price)
+            zs_expect = float(zs_expect_value) if zs_expect_value else None
+            zs_buy_expect = float(zs_buy_expect_value) if zs_buy_expect_value else None
+            
+            # 检查是否满足任何条件
+            if zs_expect is not None and zs_current >= zs_expect:
+                # 价格高于"期待（卖）"，使用红色加粗字体
+                zs_price_label.config(
+                    text=f"浙商 Price: {zs_price}\n时间: {zs_datetime}",
+                    font=("Arial", 12, "bold"),
+                    fg="red"
+                )
+            elif zs_buy_expect is not None and zs_buy_expect >= zs_current:
+                # "期待（买）"大于当前价格，使用绿色加粗字体
+                zs_price_label.config(
+                    text=f"浙商 Price: {zs_price}\n时间: {zs_datetime}",
+                    font=("Arial", 12, "bold"),
+                    fg="green"
+                )
+            else:
+                # 其他情况，使用默认字体
+                zs_price_label.config(
+                    text=f"浙商 Price: {zs_price}\n时间: {zs_datetime}",
+                    font=("Arial", 12),
+                    fg="black"
+                )
+        except ValueError:
+            # 输入无效，使用默认字体
+            zs_price_label.config(
+                text=f"浙商 Price: {zs_price}\n时间: {zs_datetime}",
+                font=("Arial", 12),
+                fg="black"
+            )
+        
+        # 设置民生银行价格显示样式
+        try:
+            ms_current = float(ms_price)
+            ms_expect = float(ms_expect_value) if ms_expect_value else None
+            ms_buy_expect = float(ms_buy_expect_value) if ms_buy_expect_value else None
+            
+            # 检查是否满足任何条件
+            if ms_expect is not None and ms_current >= ms_expect:
+                # 价格高于"期待（买）"，使用红色加粗字体
+                ms_price_label.config(
+                    text=f"民生 Price: {ms_price}\n时间: {ms_datetime}",
+                    font=("Arial", 12, "bold"),
+                    fg="red"
+                )
+            elif ms_buy_expect is not None and ms_buy_expect >= ms_current:
+                # "期待（买）"大于当前价格，使用绿色加粗字体
+                ms_price_label.config(
+                    text=f"民生 Price: {ms_price}\n时间: {ms_datetime}",
+                    font=("Arial", 12, "bold"),
+                    fg="green"
+                )
+            else:
+                # 其他情况，使用默认字体
+                ms_price_label.config(
+                    text=f"民生 Price: {ms_price}\n时间: {ms_datetime}",
+                    font=("Arial", 12),
+                    fg="black"
+                )
+        except ValueError:
+            # 输入无效，使用默认字体
+            ms_price_label.config(
+                text=f"民生 Price: {ms_price}\n时间: {ms_datetime}",
+                font=("Arial", 12),
+                fg="black"
+            )
         
         # 记录浙商银行金价日志（CSV格式）
         zs_logger.info(f"浙商金价: {zs_price}, 时间: {zs_datetime}", 
@@ -253,15 +329,55 @@ root.minsize(width=400, height=200)
 price_frame = tk.Frame(root)
 price_frame.pack(pady=10, fill=tk.X)
 
+# 为价格时间行创建子框架
+price_time_frame = tk.Frame(price_frame)
+price_time_frame.pack(fill=tk.X, pady=2)
+
+# 为期待值（卖）创建子框架
+expect_frame = tk.Frame(price_frame)
+expect_frame.pack(fill=tk.X, pady=2)
+
+# 为期待值（买）创建子框架
+expect_buy_frame = tk.Frame(price_frame)
+expect_buy_frame.pack(fill=tk.X, pady=2)
+
 # 初始化时 - 创建标签以显示价格和涨跌幅（浙商）
-zs_price_label = tk.Label(price_frame, text="浙商 Price: ", font=(
+zs_price_label = tk.Label(price_time_frame, text="浙商 Price: ", font=(
 		"Arial", 12))
-zs_price_label.pack(side=tk.LEFT, padx=10)
+zs_price_label.pack(side=tk.LEFT, padx=5)
+
+# 为浙商银行添加期待值输入框和标签
+zs_expect_label = tk.Label(expect_frame, text="期待（卖）: ", font=(
+		"Arial", 12))
+zs_expect_label.pack(side=tk.LEFT, padx=5)
+zs_expect_entry = tk.Entry(expect_frame, width=8, font=("Arial", 12))
+zs_expect_entry.pack(side=tk.LEFT, padx=5)
+
+# 为浙商银行添加"期待（买）"输入框和标签
+zs_buy_expect_label = tk.Label(expect_buy_frame, text="期待（买）: ", font=(
+		"Arial", 12))
+zs_buy_expect_label.pack(side=tk.LEFT, padx=5)
+zs_buy_expect_entry = tk.Entry(expect_buy_frame, width=8, font=("Arial", 12))
+zs_buy_expect_entry.pack(side=tk.LEFT, padx=5)
 
 # 初始化时 -创建标签以显示价格和涨跌幅（民生）
-ms_price_label = tk.Label(price_frame, text="民生 Price: ", font=(
+ms_price_label = tk.Label(price_time_frame, text="民生 Price: ", font=(
 		"Arial", 12))
-ms_price_label.pack(side=tk.LEFT, padx=10)
+ms_price_label.pack(side=tk.LEFT, padx=5)
+
+# 为民生银行添加期待值输入框和标签
+ms_expect_label = tk.Label(expect_frame, text="期待（卖）: ", font=(
+		"Arial", 12))
+ms_expect_label.pack(side=tk.LEFT, padx=15)
+ms_expect_entry = tk.Entry(expect_frame, width=8, font=("Arial", 12))
+ms_expect_entry.pack(side=tk.LEFT, padx=5)
+
+# 为民生银行添加"期待（买）"输入框和标签
+ms_buy_expect_label = tk.Label(expect_buy_frame, text="期待（买）: ", font=(
+		"Arial", 12))
+ms_buy_expect_label.pack(side=tk.LEFT, padx=15)
+ms_buy_expect_entry = tk.Entry(expect_buy_frame, width=8, font=("Arial", 12))
+ms_buy_expect_entry.pack(side=tk.LEFT, padx=5)
 
 # 创建滚动条框架
 scrollable_frame = tk.Frame(root)
@@ -413,7 +529,7 @@ def update_charts():
     
     # 创建浙商银行图表
     if len(zs_data_history["timestamp"]) > 1:
-        fig_zs = Figure(figsize=(4, 2), dpi=100)
+        fig_zs = Figure(figsize=(4, 3), dpi=100)
         ax_zs = fig_zs.add_subplot(111)
         ax_zs.plot(zs_data_history["timestamp"], zs_data_history["price"], color='orange', label='浙商金价')
         ax_zs.set_xlabel('时间')
@@ -434,7 +550,7 @@ def update_charts():
     
     # 创建民生银行图表
     if len(ms_data_history["timestamp"]) > 1:
-        fig_ms = Figure(figsize=(4, 2), dpi=100)
+        fig_ms = Figure(figsize=(4, 3), dpi=100)
         ax_ms = fig_ms.add_subplot(111)
         ax_ms.plot(ms_data_history["timestamp"], ms_data_history["price"], color='orange', label='民生金价')
         ax_ms.set_xlabel('时间')
