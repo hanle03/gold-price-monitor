@@ -8,7 +8,7 @@ Description: 浙商/民生金价实时监控: 提供金价数值的实时价监�
 '''
 
 import logging
-import logging.handlers
+# import logging.handlers
 import requests
 import datetime
 import os
@@ -315,6 +315,10 @@ def fetch_data():
 # 创建绘图函数
 canvas_zs = None
 canvas_ms = None
+fig_zs = None
+ax_zs = None
+fig_ms = None
+ax_ms = None
 
 # 创建主窗口
 root = tk.Tk()
@@ -425,149 +429,168 @@ ms_chart_title.pack(pady=5)
 ms_chart_area = tk.Frame(chart_frame)
 ms_chart_area.pack(fill=tk.BOTH, expand=True, pady=5)
 
+# 将matplotlib.dates导入移到函数外部
+from matplotlib import dates as mdates
+
+# 鼠标悬停显示详细信息的函数
+def hover(event, ax, data_history):
+    # 清除之前的注释
+    if hasattr(ax, 'hover_annotation'):
+        ax.hover_annotation.remove()
+        delattr(ax, 'hover_annotation')
+    
+    # 检查鼠标是否在轴上且event.xdata有效
+    if event.inaxes == ax and event.xdata is not None:
+        # 获取x坐标（时间）的索引
+        x_data = data_history["timestamp"]
+        y_data = data_history["price"]
+        
+        if len(x_data) == 0:
+            return
+        
+        # 将datetime对象转换为matplotlib内部的数值表示
+        x_data_num = mdates.date2num(x_data)
+        
+        # 找到最接近鼠标位置的点
+        idx = (np.abs(x_data_num - event.xdata)).argmin()
+        
+        # 获取该点的信息
+        timestamp = x_data[idx]
+        price = y_data[idx]
+        
+        # 创建显示文本
+        text = f"时间: {timestamp.strftime('%Y-%m-%d %H:%M:%S')}\n价格: {price:.2f}元"
+        
+        # 获取图表的x轴范围
+        xlim = ax.get_xlim()
+        # 计算图表中心位置
+        x_center = (xlim[0] + xlim[1]) / 2
+        
+        # 根据鼠标位置在图表左侧或右侧来调整标签位置
+        if event.xdata < x_center:
+            # 鼠标在左侧，标签在右边
+            ax.hover_annotation = ax.annotate(
+                text, 
+                xy=(event.xdata, event.ydata), 
+                xytext=(10, 10),  # 标签位置相对于数据点的偏移（向右上）
+                textcoords='offset points',
+                verticalalignment='bottom',
+                horizontalalignment='left',
+                bbox=dict(boxstyle='round', facecolor='white', alpha=0.9),
+                zorder=1000,  # 设置高zorder确保在最上层
+                arrowprops=dict(arrowstyle='->', connectionstyle='arc3,rad=.5')
+            )
+        else:
+            # 鼠标在右侧，标签在左边
+            ax.hover_annotation = ax.annotate(
+                text, 
+                xy=(event.xdata, event.ydata), 
+                xytext=(-10, 10),  # 标签位置相对于数据点的偏移（向左上）
+                textcoords='offset points',
+                verticalalignment='bottom',
+                horizontalalignment='right',
+                bbox=dict(boxstyle='round', facecolor='white', alpha=0.9),
+                zorder=1000,  # 设置高zorder确保在最上层
+                arrowprops=dict(arrowstyle='->', connectionstyle='arc3,rad=-.5')
+            )
+        
+        # 清除之前的十字轴线
+        if hasattr(ax, 'hover_hline'):
+            ax.hover_hline.remove()
+            delattr(ax, 'hover_hline')
+        if hasattr(ax, 'hover_vline'):
+            ax.hover_vline.remove()
+            delattr(ax, 'hover_vline')
+        
+        # 绘制十字轴线以突出当前坐标点
+        # 水平轴线（y=price）
+        ax.hover_hline = ax.axhline(y=price, color='gray', linestyle='--', linewidth=0.5, zorder=999)
+        # 垂直轴线（x=timestamp）
+        ax.hover_vline = ax.axvline(x=timestamp, color='gray', linestyle='--', linewidth=0.5, zorder=999)
+        
+        ax.figure.canvas.draw_idle()
+    else:
+        # 鼠标移出图表区域，移除十字线
+        if hasattr(ax, 'hover_hline'):
+            ax.hover_hline.remove()
+            delattr(ax, 'hover_hline')
+        if hasattr(ax, 'hover_vline'):
+            ax.hover_vline.remove()
+            delattr(ax, 'hover_vline')
+        
+        ax.figure.canvas.draw_idle()
+
 # 创建图表更新函数
 def update_charts():
-    global canvas_zs, canvas_ms
-    
-    # 清除旧图表
-    for widget in zs_chart_area.winfo_children():
-        widget.destroy()
-    
-    for widget in ms_chart_area.winfo_children():
-        widget.destroy()
+    global canvas_zs, canvas_ms, fig_zs, ax_zs, fig_ms, ax_ms
     
     # 将matplotlib.dates导入移到函数外部
-    from matplotlib import dates as mdates
     
-    # 鼠标悬停显示详细信息的函数
-    def hover(event, ax, data_history):
-        # 清除之前的注释
-        if hasattr(ax, 'hover_annotation'):
-            ax.hover_annotation.remove()
-            delattr(ax, 'hover_annotation')
-        
-        # 检查鼠标是否在轴上且event.xdata有效
-        if event.inaxes == ax and event.xdata is not None:
-            # 获取x坐标（时间）的索引
-            x_data = data_history["timestamp"]
-            y_data = data_history["price"]
-            
-            if len(x_data) == 0:
-                return
-            
-            # 将datetime对象转换为matplotlib内部的数值表示
-            x_data_num = mdates.date2num(x_data)
-            
-            # 找到最接近鼠标位置的点
-            idx = (np.abs(x_data_num - event.xdata)).argmin()
-            
-            # 获取该点的信息
-            timestamp = x_data[idx]
-            price = y_data[idx]
-            
-            # 创建显示文本
-            text = f"时间: {timestamp.strftime('%Y-%m-%d %H:%M:%S')}\n价格: {price:.2f}元"
-            
-            # 获取图表的x轴范围
-            xlim = ax.get_xlim()
-            # 计算图表中心位置
-            x_center = (xlim[0] + xlim[1]) / 2
-            
-            # 根据鼠标位置在图表左侧或右侧来调整标签位置
-            if event.xdata < x_center:
-                # 鼠标在左侧，标签在右边
-                ax.hover_annotation = ax.annotate(
-                    text, 
-                    xy=(event.xdata, event.ydata), 
-                    xytext=(10, 10),  # 标签位置相对于数据点的偏移（向右上）
-                    textcoords='offset points',
-                    verticalalignment='bottom',
-                    horizontalalignment='left',
-                    bbox=dict(boxstyle='round', facecolor='white', alpha=0.9),
-                    zorder=1000,  # 设置高zorder确保在最上层
-                    arrowprops=dict(arrowstyle='->', connectionstyle='arc3,rad=.5')
-                )
-            else:
-                # 鼠标在右侧，标签在左边
-                ax.hover_annotation = ax.annotate(
-                    text, 
-                    xy=(event.xdata, event.ydata), 
-                    xytext=(-10, 10),  # 标签位置相对于数据点的偏移（向左上）
-                    textcoords='offset points',
-                    verticalalignment='bottom',
-                    horizontalalignment='right',
-                    bbox=dict(boxstyle='round', facecolor='white', alpha=0.9),
-                    zorder=1000,  # 设置高zorder确保在最上层
-                    arrowprops=dict(arrowstyle='->', connectionstyle='arc3,rad=-.5')
-                )
-            
-            # 清除之前的十字轴线
-            if hasattr(ax, 'hover_hline'):
-                ax.hover_hline.remove()
-                delattr(ax, 'hover_hline')
-            if hasattr(ax, 'hover_vline'):
-                ax.hover_vline.remove()
-                delattr(ax, 'hover_vline')
-            
-            # 绘制十字轴线以突出当前坐标点
-            # 水平轴线（y=price）
-            ax.hover_hline = ax.axhline(y=price, color='gray', linestyle='--', linewidth=0.5, zorder=999)
-            # 垂直轴线（x=timestamp）
-            ax.hover_vline = ax.axvline(x=timestamp, color='gray', linestyle='--', linewidth=0.5, zorder=999)
-            
-            ax.figure.canvas.draw_idle()
-        else:
-            # 鼠标移出图表区域，移除十字线
-            if hasattr(ax, 'hover_hline'):
-                ax.hover_hline.remove()
-                delattr(ax, 'hover_hline')
-            if hasattr(ax, 'hover_vline'):
-                ax.hover_vline.remove()
-                delattr(ax, 'hover_vline')
-            
-            ax.figure.canvas.draw_idle()
-    
-    # 创建浙商银行图表
+    # 更新浙商银行图表
     if len(zs_data_history["timestamp"]) > 1:
-        fig_zs = Figure(figsize=(4, 3), dpi=100)
-        ax_zs = fig_zs.add_subplot(111)
+        # 如果图表不存在，则创建新图表
+        if fig_zs is None or ax_zs is None:
+            fig_zs = Figure(figsize=(4, 3), dpi=100)
+            ax_zs = fig_zs.add_subplot(111)
+            ax_zs.set_xlabel('时间')
+            ax_zs.set_ylabel('价格 (元)')
+            ax_zs.tick_params(axis='x', rotation=45)
+            ax_zs.grid(True)
+            # 调整图表边距，增加右侧边距，实现左对齐效果
+            fig_zs.subplots_adjust(left=0.15, right=0.85, top=0.9, bottom=0.4)
+            
+            canvas_zs = FigureCanvasTkAgg(fig_zs, master=zs_chart_area)
+            canvas_zs.draw()
+            
+            # 添加鼠标悬停事件
+            canvas_zs.mpl_connect('motion_notify_event', lambda event: hover(event, ax_zs, zs_data_history))
+            
+            canvas_zs.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+        else:
+            # 清除旧的图表内容
+            ax_zs.clear()
+            ax_zs.set_xlabel('时间')
+            ax_zs.set_ylabel('价格 (元)')
+            ax_zs.tick_params(axis='x', rotation=45)
+            ax_zs.grid(True)
+        
+        # 更新图表数据
         ax_zs.plot(zs_data_history["timestamp"], zs_data_history["price"], color='orange', label='浙商金价')
-        ax_zs.set_xlabel('时间')
-        ax_zs.set_ylabel('价格 (元)')
-        ax_zs.tick_params(axis='x', rotation=45)
-        ax_zs.grid(True)
         ax_zs.legend()
-        # 调整图表边距，增加右侧边距，实现左对齐效果
-        fig_zs.subplots_adjust(left=0.15, right=0.85, top=0.9, bottom=0.4)
-        
-        canvas_zs = FigureCanvasTkAgg(fig_zs, master=zs_chart_area)
-        canvas_zs.draw()
-        
-        # 添加鼠标悬停事件
-        canvas_zs.mpl_connect('motion_notify_event', lambda event: hover(event, ax_zs, zs_data_history))
-        
-        canvas_zs.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+        canvas_zs.draw_idle()
     
-    # 创建民生银行图表
+    # 更新民生银行图表
     if len(ms_data_history["timestamp"]) > 1:
-        fig_ms = Figure(figsize=(4, 3), dpi=100)
-        ax_ms = fig_ms.add_subplot(111)
+        # 如果图表不存在，则创建新图表
+        if fig_ms is None or ax_ms is None:
+            fig_ms = Figure(figsize=(4, 3), dpi=100)
+            ax_ms = fig_ms.add_subplot(111)
+            ax_ms.set_xlabel('时间')
+            ax_ms.set_ylabel('价格 (元)')
+            ax_ms.tick_params(axis='x', rotation=45)
+            ax_ms.grid(True)
+            # 调整图表边距，增加右侧边距，实现左对齐效果
+            fig_ms.subplots_adjust(left=0.15, right=0.85, top=0.9, bottom=0.4)
+            
+            canvas_ms = FigureCanvasTkAgg(fig_ms, master=ms_chart_area)
+            canvas_ms.draw()
+            
+            # 添加鼠标悬停事件
+            canvas_ms.mpl_connect('motion_notify_event', lambda event: hover(event, ax_ms, ms_data_history))
+            
+            canvas_ms.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+        else:
+            # 清除旧的图表内容
+            ax_ms.clear()
+            ax_ms.set_xlabel('时间')
+            ax_ms.set_ylabel('价格 (元)')
+            ax_ms.tick_params(axis='x', rotation=45)
+            ax_ms.grid(True)
+        
+        # 更新图表数据
         ax_ms.plot(ms_data_history["timestamp"], ms_data_history["price"], color='orange', label='民生金价')
-        ax_ms.set_xlabel('时间')
-        ax_ms.set_ylabel('价格 (元)')
-        ax_ms.tick_params(axis='x', rotation=45)
-        ax_ms.grid(True)
         ax_ms.legend()
-        # 调整图表边距，增加右侧边距，实现左对齐效果
-        fig_ms.subplots_adjust(left=0.15, right=0.85, top=0.9, bottom=0.4)
-        
-        canvas_ms = FigureCanvasTkAgg(fig_ms, master=ms_chart_area)
-        canvas_ms.draw()
-        
-        # 添加鼠标悬停事件
-        canvas_ms.mpl_connect('motion_notify_event', lambda event: hover(event, ax_ms, ms_data_history))
-        
-        canvas_ms.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+        canvas_ms.draw_idle()
 
 # 从日志文件初始化数据
 # 读取浙商银行日志数据
