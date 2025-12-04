@@ -99,7 +99,8 @@ msUrl = "https://api.jdjygold.com/gw/generic/hj/h5/m/latestPrice"  # 民生银�
 # 格式：{"timestamp": [], "price": []}
 zs_data_history = {"timestamp": [], "price": []}  # 浙商银行价格历史
 ms_data_history = {"timestamp": [], "price": []}  # 民生银行价格历史
-MAX_DATA_POINTS = 3600  # 一个小时的数据点（每秒一个）
+# MAX_DATA_POINTS = 3600  # 一个小时的数据点（每秒一个）
+MAX_DATA_POINTS = 240
 
 # 从日志文件读取数据的函数
 def read_data_from_log(file_path):
@@ -237,6 +238,109 @@ def save_data_to_history(data_history, price, timestamp=None):
         data_history["timestamp"].pop(0)
         data_history["price"].pop(0)
 
+# 添加全局变量用于跟踪通知状态
+notification_sent = {
+    'zs_sell': False,
+    'zs_buy': False,
+    'ms_sell': False,
+    'ms_buy': False
+}
+
+# 显示置顶弹窗通知的函数
+def show_notification(title, message):
+    """
+    显示置顶弹窗通知
+    参数:
+        title: 通知标题
+        message: 通知内容
+    """
+    # 创建弹窗窗口
+    popup = tk.Toplevel(root)
+    popup.title(title)
+    popup.geometry("300x150")
+    
+    # 设置窗口置顶
+    popup.attributes('-topmost', True)
+    
+    # 添加通知内容
+    label = tk.Label(popup, text=message, font=('Arial', 12), padx=20, pady=20)
+    label.pack()
+    
+    # 添加关闭按钮
+    close_button = tk.Button(popup, text="关闭", command=popup.destroy, font=('Arial', 10))
+    close_button.pack(pady=10)
+    
+    # 设置弹窗在1小时后自动关闭
+    popup.after(600000, popup.destroy)
+
+# 更新价格标签样式的函数
+def update_price_label(price_label, bank_name, current_price, datetime_str, expect_value, buy_expect_value):
+    """
+    更新价格标签的样式并显示弹窗通知
+    参数:
+        price_label: 价格标签组件
+        bank_name: 银行名称（用于显示和通知）
+        current_price: 当前价格
+        datetime_str: 时间字符串
+        expect_value: 期待（卖）值
+        buy_expect_value: 期待（买）值
+    """
+    global notification_sent
+    
+    try:
+        current = float(current_price)
+        expect = float(expect_value) if expect_value else None
+        buy_expect = float(buy_expect_value) if buy_expect_value else None
+        
+        # 获取银行缩写，用于通知状态跟踪
+        bank_abbr = 'zs' if bank_name == '浙商' else 'ms'
+        
+        # 检查是否满足任何条件
+        if expect is not None and current >= expect:
+            # 价格高于"期待（卖）"，使用红色加粗字体
+            price_label.config(
+                text=f"{bank_name} Price: {current_price}\n时间: {datetime_str}",
+                font=("Arial", 12, "bold"),
+                fg="red"
+            )
+            
+            # 显示弹窗通知（仅当第一次触发时）
+            if not notification_sent[f'{bank_abbr}_sell']:
+                message = f"当前价格: {current_price}元\n已达到或超过期待（卖）价格: {expect}元\n时间: {datetime_str}"
+                show_notification(f"{bank_name}金价提醒", message)
+                notification_sent[f'{bank_abbr}_sell'] = True
+        elif buy_expect is not None and buy_expect >= current:
+            # "期待（买）"大于当前价格，使用绿色加粗字体
+            price_label.config(
+                text=f"{bank_name} Price: {current_price}\n时间: {datetime_str}",
+                font=("Arial", 12, "bold"),
+                fg="green"
+            )
+            
+            # 显示弹窗通知（仅当第一次触发时）
+            if not notification_sent[f'{bank_abbr}_buy']:
+                message = f"当前价格: {current_price}元\n已低于或等于期待（买）价格: {buy_expect}元\n时间: {datetime_str}"
+                show_notification(f"{bank_name}金价提醒", message)
+                notification_sent[f'{bank_abbr}_buy'] = True
+        else:
+            # 其他情况，使用默认字体
+            price_label.config(
+                text=f"{bank_name} Price: {current_price}\n时间: {datetime_str}",
+                font=("Arial", 12),
+                fg="black"
+            )
+            
+            # 重置通知状态，以便下次触发时再次通知
+            notification_sent[f'{bank_abbr}_sell'] = False
+            notification_sent[f'{bank_abbr}_buy'] = False
+    except ValueError:
+        # 输入无效，使用默认字体
+        price_label.config(
+            text=f"{bank_name} Price: {current_price}\n时间: {datetime_str}",
+            font=("Arial", 12),
+            fg="black"
+        )
+
 # 主数据获取函数
 def fetch_data():
     try:
@@ -256,53 +360,6 @@ def fetch_data():
         zs_buy_expect_value = zs_buy_expect_entry.get()  # 期待（买）
         ms_expect_value = ms_expect_entry.get()  # 期待（买）
         ms_buy_expect_value = ms_buy_expect_entry.get()  # 期待（买）
-        
-        # 更新价格标签样式的函数
-        def update_price_label(price_label, bank_name, current_price, datetime_str, expect_value, buy_expect_value):
-            """
-            更新价格标签的样式
-            参数:
-                price_label: 价格标签组件
-                bank_name: 银行名称（用于显示）
-                current_price: 当前价格
-                datetime_str: 时间字符串
-                expect_value: 期待（卖）值
-                buy_expect_value: 期待（买）值
-            """
-            try:
-                current = float(current_price)
-                expect = float(expect_value) if expect_value else None
-                buy_expect = float(buy_expect_value) if buy_expect_value else None
-                
-                # 检查是否满足任何条件
-                if expect is not None and current >= expect:
-                    # 价格高于"期待（卖）"，使用红色加粗字体
-                    price_label.config(
-                        text=f"{bank_name} Price: {current_price}\n时间: {datetime_str}",
-                        font=("Arial", 12, "bold"),
-                        fg="red"
-                    )
-                elif buy_expect is not None and buy_expect >= current:
-                    # "期待（买）"大于当前价格，使用绿色加粗字体
-                    price_label.config(
-                        text=f"{bank_name} Price: {current_price}\n时间: {datetime_str}",
-                        font=("Arial", 12, "bold"),
-                        fg="green"
-                    )
-                else:
-                    # 其他情况，使用默认字体
-                    price_label.config(
-                        text=f"{bank_name} Price: {current_price}\n时间: {datetime_str}",
-                        font=("Arial", 12),
-                        fg="black"
-                    )
-            except ValueError:
-                # 输入无效，使用默认字体
-                price_label.config(
-                    text=f"{bank_name} Price: {current_price}\n时间: {datetime_str}",
-                    font=("Arial", 12),
-                    fg="black"
-                )
         
         # 使用统一函数更新浙商银行价格标签
         update_price_label(zs_price_label, "浙商", zs_price, zs_datetime, zs_expect_value, zs_buy_expect_value)
@@ -337,8 +394,8 @@ def fetch_data():
         zs_price_label.config(text="ZS 数据缺失")
         ms_price_label.config(text="MS 数据缺失")
 
-    # 每隔 1 秒钟调用一次 fetch_data 函数
-    root.after(1000, fetch_data)
+    # 每隔 15 秒钟调用一次 fetch_data 函数
+    root.after(15000, fetch_data)
 
 # --------------------------
 # 图表变量初始化
@@ -490,7 +547,14 @@ from matplotlib import dates as mdates
 def hover(event, ax, data_history):
     # 清除之前的注释
     if hasattr(ax, 'hover_annotation'):
-        ax.hover_annotation.remove()
+        # 使用更可靠的方式移除注释
+        try:
+            # 尝试使用remove方法
+            ax.hover_annotation.remove()
+        except NotImplementedError:
+            # 如果remove方法不可用，尝试其他方式
+            pass
+        # 无论如何都要删除属性
         delattr(ax, 'hover_annotation')
     
     # 检查鼠标是否在轴上且event.xdata有效
@@ -548,12 +612,18 @@ def hover(event, ax, data_history):
                 arrowprops=dict(arrowstyle='->', connectionstyle='arc3,rad=-.5')
             )
         
-        # 清除之前的十字轴线
+        # 清除之前的十字线
         if hasattr(ax, 'hover_hline'):
-            ax.hover_hline.remove()
+            try:
+                ax.hover_hline.remove()
+            except NotImplementedError:
+                pass
             delattr(ax, 'hover_hline')
         if hasattr(ax, 'hover_vline'):
-            ax.hover_vline.remove()
+            try:
+                ax.hover_vline.remove()
+            except NotImplementedError:
+                pass
             delattr(ax, 'hover_vline')
         
         # 绘制十字轴线以突出当前坐标点
@@ -566,10 +636,16 @@ def hover(event, ax, data_history):
     else:
         # 鼠标移出图表区域，移除十字线
         if hasattr(ax, 'hover_hline'):
-            ax.hover_hline.remove()
+            try:
+                ax.hover_hline.remove()
+            except NotImplementedError:
+                pass
             delattr(ax, 'hover_hline')
         if hasattr(ax, 'hover_vline'):
-            ax.hover_vline.remove()
+            try:
+                ax.hover_vline.remove()
+            except NotImplementedError:
+                pass
             delattr(ax, 'hover_vline')
         
         ax.figure.canvas.draw_idle()
