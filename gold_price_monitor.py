@@ -22,6 +22,7 @@ import logging
 import requests
 import datetime
 import os
+import sys
 import matplotlib
 # 设置matplotlib使用TkAgg后端
 matplotlib.use('TkAgg')
@@ -33,6 +34,11 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import numpy as np
 # 用于创建图形用户界面
 import tkinter as tk  # 基础模块
+import winsound  # 用于播放提示音
+import pygame  # 用于播放MP3文件
+
+# 初始化pygame.mixer
+pygame.mixer.init()
 
 # CSV格式的日志格式
 csv_formatter = logging.Formatter('"%(time)s","%(price)s"')
@@ -100,7 +106,7 @@ msUrl = "https://api.jdjygold.com/gw/generic/hj/h5/m/latestPrice"  # 民生银�
 zs_data_history = {"timestamp": [], "price": []}  # 浙商银行价格历史
 ms_data_history = {"timestamp": [], "price": []}  # 民生银行价格历史
 # MAX_DATA_POINTS = 3600  # 一个小时的数据点（每秒一个）
-MAX_DATA_POINTS = 240
+MAX_DATA_POINTS = 720  # 一个小时的数据点（每5秒一个）
 
 # 从日志文件读取数据的函数
 def read_data_from_log(file_path):
@@ -246,14 +252,63 @@ notification_sent = {
     'ms_buy': False
 }
 
+# 添加全局变量用于控制铃声功能
+ringtone_enabled = True  # 默认启用铃声
+alarm_active = False  # 跟踪当前是否有闹钟正在响
+
+# 循环播放铃声的函数
+def play_ringtone(popup):
+    """
+    循环播放铃声，直到弹窗被关闭
+    参数:
+        popup: 弹窗窗口对象
+    """
+    global alarm_active
+    if alarm_active and ringtone_enabled:
+        try:
+            # 获取MP3文件的路径，支持PyInstaller打包后的环境
+            if getattr(sys, 'frozen', False):
+                # 打包后的环境
+                mp3_path = os.path.join(sys._MEIPASS, "xm3954.mp3")
+            else:
+                # 开发环境
+                mp3_path = "xm3954.mp3"
+            
+            # 播放MP3文件
+            if not pygame.mixer.music.get_busy():
+                pygame.mixer.music.load(mp3_path)
+                pygame.mixer.music.play(loops=0)  # 只播放一次，因为函数会每隔1秒调用一次
+        except Exception as e:
+            # 如果播放MP3失败，回退到系统声音
+            print(f"播放MP3失败: {e}")
+            try:
+                winsound.PlaySound("SystemHand", winsound.SND_ALIAS | winsound.SND_ASYNC)
+            except:
+                winsound.MessageBeep(winsound.MB_ICONHAND)
+        # 每隔1秒再次播放
+        popup.after(1000, lambda: play_ringtone(popup))
+
+# 停止播放铃声的函数
+def stop_ringtone():
+    """
+    停止播放铃声
+    """
+    global alarm_active
+    alarm_active = False
+    # 停止pygame播放的音乐
+    pygame.mixer.music.stop()
+
 # 显示置顶弹窗通知的函数
 def show_notification(title, message):
     """
-    显示置顶弹窗通知
+    显示置顶弹窗通知并播放提示音
     参数:
         title: 通知标题
         message: 通知内容
     """
+    global alarm_active
+    alarm_active = True
+    
     # 创建弹窗窗口
     popup = tk.Toplevel(root)
     popup.title(title)
@@ -267,11 +322,19 @@ def show_notification(title, message):
     label.pack()
     
     # 添加关闭按钮
-    close_button = tk.Button(popup, text="关闭", command=popup.destroy, font=('Arial', 10))
+    def close_popup():
+        stop_ringtone()
+        popup.destroy()
+    
+    close_button = tk.Button(popup, text="关闭", command=close_popup, font=('Arial', 10))
     close_button.pack(pady=10)
     
     # 设置弹窗在1小时后自动关闭
-    popup.after(600000, popup.destroy)
+    popup.after(600000, close_popup)
+    
+    # 开始循环播放铃声
+    if ringtone_enabled:
+        play_ringtone(popup)
 
 # 更新价格标签样式的函数
 def update_price_label(price_label, bank_name, current_price, datetime_str, expect_value, buy_expect_value):
@@ -394,8 +457,8 @@ def fetch_data():
         zs_price_label.config(text="ZS 数据缺失")
         ms_price_label.config(text="MS 数据缺失")
 
-    # 每隔 15 秒钟调用一次 fetch_data 函数
-    root.after(15000, fetch_data)
+    # 每隔 5 秒钟调用一次 fetch_data 函数
+    root.after(5000, fetch_data)
 
 # --------------------------
 # 图表变量初始化
@@ -493,6 +556,21 @@ zs_buy_expect_entry = zs_ui['buy_expect_entry']
 ms_price_label = ms_ui['price_label']
 ms_expect_entry = ms_ui['expect_entry']
 ms_buy_expect_entry = ms_ui['buy_expect_entry']
+
+# 添加铃声控制开关
+control_frame = tk.Frame(price_frame)
+control_frame.pack(fill=tk.X, pady=5)
+
+# 创建铃声开关标签
+ringtone_label = tk.Label(control_frame, text="启用铃声提醒: ", font=("Arial", 12))
+ringtone_label.pack(side=tk.LEFT, padx=5)
+
+# 创建铃声开关复选框
+ringtone_var = tk.BooleanVar(value=True)
+ringtone_checkbox = tk.Checkbutton(control_frame, variable=ringtone_var, 
+                                   command=lambda: globals().update(ringtone_enabled=ringtone_var.get()),
+                                   font=("Arial", 12))
+ringtone_checkbox.pack(side=tk.LEFT, padx=5)
 
 # 创建滚动条框架
 scrollable_frame = tk.Frame(root)
